@@ -9,30 +9,53 @@ variable "instance_port" {
     default = 8080
 }
 
-output "instance_ip_addr" {
-  value = aws_instance.instance.public_ip
+data "aws_vpc" "default" {
+    default = true
 }
 
-resource "aws_instance" "instance"{
+data "aws_subnets" "default" {
 
-    ami = "ami-09d3b3274b6c5d4aa"
-    instance_type = "t2.micro"
-    vpc_security_group_ids = [aws_security_group.instance-security.id]
+    filter{
 
-    user_data = <<-EOF
-                echo "Hello" > index.xhtml
-                nohup busybox httpd -f -p ${instance_port} &
-                EOF
-        
-    user_data_replace_on_change = "true"
-
-
-    tags = {
-
-        Name = "vraj-instance"
+        name = "vpc-id"
+        values = [data.aws_vpc.default.id]
     }
 }
 
+
+
+resource "aws_launch_configuration" "instance"{
+
+    image_id = "ami-09d3b3274b6c5d4aa"
+    instance_type = "t2.micro"
+    security_groups = [aws_security_group.instance-security.id]
+   
+    user_data = <<-EOF
+                echo "Hello" > index.xhtml
+                nohup busybox httpd -f -p ${var.instance_port} &
+                EOF     
+
+    
+
+    lifecycle {
+create_before_destroy = true
+}
+    
+}
+
+resource "aws_autoscaling_group" "example" {
+
+    launch_configuration = aws_launch_configuration.instance.name
+    vpc_zone_identifier = data.aws_subnets.default.ids
+    min_size = 2
+    max_size = 10
+
+    tag {
+key = "Name"
+value = "terraform-asg-example"
+propagate_at_launch = true
+}
+}
 
 resource "aws_security_group" "instance-security" {
     name = "terraform security"
